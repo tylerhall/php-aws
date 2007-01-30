@@ -58,7 +58,4 @@
 			return $signature;
 		}
 	}
-	
-	$turk = new Turk("1TGRVYS5Q5PFDY9GZG82", "NqySNeM84s7/DR+9jakeeLrTSzxx/RIXkPrsXlRR");
-	print_r($turk->getAccountBalance());
 ?>
