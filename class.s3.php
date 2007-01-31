@@ -27,7 +27,8 @@
 			$foo = $this->getBucketContents($bucket, $prefix);
 			if(!is_array($foo)) return false;
 			foreach($foo as $bar)
-				$total += $bar[3];
+				if($bar['type'] == "key")
+					$total += $bar['size'];
 			return $total;
 		}
 		
@@ -172,17 +173,16 @@
 			return $result;
 		}
 		
-		function getObjectInfo($bucket, $object, $returnTags = true)
+		function getObjectInfo($bucket, $object)
 		{
 			$ret = array();
-			$result = $this->getBucketContents($bucket, $object, $returnTags);
-			if(count($result) == 0) return false;
-			for($i = 0; $i < count($result[0]); $i++)
-				$ret[$result[0][$i]] = $result[1][$i];
-			return $ret;
+			$object = $this->getBucketContents($bucket, $object);
+			if(count($object) != 0) return false;
+			if($object[0]['type'] == "prefix") return false;
+			return $object[0];
 		}
 		
-		function getBucketContents($bucket, $prefix = null, $returnTags = false, $assoc = null, $marker = null)
+		function getBucketContents($bucket, $prefix = null, $delim = null, $marker = null)
 		{
 			$req = array(	"verb" => "GET",
 							"md5" => null,
@@ -192,26 +192,27 @@
 						);
 
 			if($prefix[0] == "/") $prefix[0] = "";
-			$params = array("prefix" => trim($prefix), "marker" => $marker);
+			$params = array("prefix" => trim($prefix), "marker" => $marker, "delimiter" => $delim);
 			$result = $this->sendRequest($req, $params);		
 			preg_match_all("@<Contents>(.*?)</Contents>@", $result, $matches);
 			
-			$first = true;
 			$keys = array();
 			foreach($matches[1] as $match)
 			{
 				preg_match_all('@<(.*?)>(.*?)</\1>@', $match, $keyInfo);
-				if($first && $returnTags) $keys[] = $keyInfo[1]; $first = false;
-				$keyInfo[2][2] = str_replace("&quot;", "", $keyInfo[2][2]);
-				if($assoc)
-					$keys[$keyInfo[2][0]] = $keyInfo[2];
-				else
-					$keys[] = $keyInfo[2];
+				list($name, $date, $hash, $size) = $keyInfo[2];
+				$hash = str_replace("&quot;", "", $hash);
+				$keys[] = array("name" => $name, "date" => $date, "hash" => $hash, "size" => $size, "type" => "key");
 			}
 			
+			preg_match_all("@<Prefix>(.*?)</Prefix>@", $result, $matches);
+			array_shift($matches[1]);
+			foreach($matches[1] as $match)
+				$keys[] = array("name" => $match, "type" => "prefix");
+
 			preg_match('@<IsTruncated>(.*?)</IsTruncated>@', $result, $matches);
 			if(strtolower($matches[1]) == "true")
-				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $returnTags, $assoc, $keyInfo[2][0]));
+				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $delim, $keyInfo[2][0]));
 
 			return $keys;
 		}
@@ -252,7 +253,7 @@
 			
 			$curl .= '"' . $this->_server . $req['resource'];
 			
-			if($params)
+			if(is_array($params))
 			{
 				$curl .= "?";
 				foreach($params as $key => $val)
@@ -309,7 +310,26 @@
 			for($i = 0; $i < strlen($str); $i += 2)
 				$ret .= chr(hexdec(substr($str, $i, 2)));
 			return base64_encode($ret);
-		}		
+		}
+		
+		function sortKeys($keys, $first = null)
+		{	
+			if(is_null($first))
+				usort($keys, create_function('$a,$b', 'return strcmp($a["name"], $b["name"]);'));
+			elseif($first == "key")
+				usort($keys, create_function('$a,$b', '
+					if($a["type"] == $b["type"]) return strcmp($a["name"], $b["name"]);
+					if($a["type"] == "key") return -1;
+					return 1;
+				'));
+			elseif($first == "prefix")
+				usort($keys, create_function('$a,$b', '
+					if($a["type"] == $b["type"]) return strcmp($a["name"], $b["name"]);
+					if($a["type"] == "prefix") return -1;
+					return 1;
+				'));
+			return $keys;
+		}
 
 		var $mime_types = array("323" => "text/h323", "acx" => "application/internet-property-stream", "ai" => "application/postscript", "aif" => "audio/x-aiff", "aifc" => "audio/x-aiff", "aiff" => "audio/x-aiff",
 							"asf" => "video/x-ms-asf", "asr" => "video/x-ms-asf", "asx" => "video/x-ms-asf", "au" => "audio/basic", "avi" => "video/quicktime", "axs" => "application/olescript", "bas" => "text/plain", "bcpio" => "application/x-bcpio", "bin" => "application/octet-stream", "bmp" => "image/bmp",
