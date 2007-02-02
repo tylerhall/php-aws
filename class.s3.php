@@ -42,7 +42,7 @@
 							"resource" => "/$bucket" . $object,
 						);
 			$result = $this->sendRequest($req);
-			return $this->objectExists($bucket, $object);
+			return !$this->objectExists($bucket, $object);
 		}
 		
 		function putObject($bucket, $object, $filename, $public = null, $disposition = null)
