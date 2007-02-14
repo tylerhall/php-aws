@@ -31,6 +31,19 @@
 					$total += $bar['size'];
 			return $total;
 		}
+
+		function recursiveDelete($bucket, $object)
+		{
+			error_log("start");
+			$items = $this->getBucketContents($bucket, $object);
+			error_log("stop");
+			foreach($items as $item)
+			{
+				error_log("foo");
+				echo "Deleting " . $item["name"] . "<br/>";
+				// $this->deleteObject($bucket, $item["name"]);
+			}
+		}
 		
 		function deleteObject($bucket, $object)
 		{
@@ -212,8 +225,8 @@
 			foreach($matches[1] as $match)
 				$keys[] = array("name" => $match, "type" => "prefix");
 
-			preg_match('@<IsTruncated>(.*?)</IsTruncated>@', $result, $matches);
-			if(strtolower($matches[1]) == "true")
+			preg_match('@<NextMarker>(.*?)</NextMarker>@', $result, $matches);
+			if(strlen($matches[1]) > 0)
 			{
 				preg_match('@<NextMarker>(.*?)</NextMarker>@', $result, $matches);
 				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $delim, $matches[1]));
