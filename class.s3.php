@@ -196,6 +196,7 @@
 			$result = $this->sendRequest($req, $params);		
 			preg_match_all("@<Contents>(.*?)</Contents>@", $result, $matches);
 			
+			$lastKey = "";
 			$keys = array();
 			foreach($matches[1] as $match)
 			{
@@ -203,6 +204,7 @@
 				list($name, $date, $hash, $size) = $keyInfo[2];
 				$hash = str_replace("&quot;", "", $hash);
 				$keys[] = array("name" => $name, "date" => $date, "hash" => $hash, "size" => $size, "type" => "key");
+				if(trim($name) != "") $lastKey = $name;
 			}
 			
 			preg_match_all("@<Prefix>(.*?)</Prefix>@", $result, $matches);
@@ -212,7 +214,10 @@
 
 			preg_match('@<IsTruncated>(.*?)</IsTruncated>@', $result, $matches);
 			if(strtolower($matches[1]) == "true")
-				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $delim, $keyInfo[2][0]));
+			{
+				preg_match('@<NextMarker>(.*?)</NextMarker>@', $result, $matches);
+				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $delim, $matches[1]));
+			}
 
 			return $keys;
 		}
