@@ -34,15 +34,9 @@
 
 		function recursiveDelete($bucket, $object)
 		{
-			error_log("start");
 			$items = $this->getBucketContents($bucket, $object);
-			error_log("stop");
 			foreach($items as $item)
-			{
-				error_log("foo");
-				echo "Deleting " . $item["name"] . "<br/>";
-				// $this->deleteObject($bucket, $item["name"]);
-			}
+				$this->deleteObject($bucket, $item["name"]);
 		}
 		
 		function deleteObject($bucket, $object)
