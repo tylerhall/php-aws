@@ -21,7 +21,7 @@
 			$this->_hasher = new Crypt_HMAC($this->_secret, "sha1");
 		}
 		
-		function directorySize($bucket, $prefix)
+		function directorySize($bucket, $prefix = "")
 		{
 			$total = 0;
 			$foo = $this->getBucketContents($bucket, $prefix);
@@ -79,7 +79,7 @@
 			$this->sendRequest($req);
 			
 			$info = $this->getObjectInfo($bucket, $object);
-			return ($info['ETag'] == md5_file($filename));
+			return ($info['hash'] == md5_file($filename));
 		}
 		
 		function getObject($bucket, $object)
@@ -184,7 +184,7 @@
 		{
 			$ret = array();
 			$object = $this->getBucketContents($bucket, $object);
-			if(count($object) != 0) return false;
+			if(count($object) == 0) return false;
 			if($object[0]['type'] == "prefix") return false;
 			return $object[0];
 		}
@@ -202,17 +202,18 @@
 			$params = array("prefix" => trim($prefix), "marker" => $marker, "delimiter" => $delim);
 			$result = $this->sendRequest($req, $params);		
 			preg_match_all("@<Contents>(.*?)</Contents>@", $result, $matches);
-			
 			$lastKey = "";
 			$keys = array();
 			foreach($matches[1] as $match)
 			{
 				preg_match_all('@<(.*?)>(.*?)</\1>@', $match, $keyInfo);
+
 				list($name, $date, $hash, $size) = $keyInfo[2];
 				$hash = str_replace("&quot;", "", $hash);
 				$keys[] = array("name" => $name, "date" => $date, "hash" => $hash, "size" => $size, "type" => "key");
 				if(trim($name) != "") $lastKey = $name;
 			}
+
 			
 			preg_match_all("@<Prefix>(.*?)</Prefix>@", $result, $matches);
 			array_shift($matches[1]);
@@ -220,7 +221,8 @@
 				$keys[] = array("name" => $match, "type" => "prefix");
 
 			preg_match('@<NextMarker>(.*?)</NextMarker>@', $result, $matches);
-			if(strlen($matches[1]) > 0)
+
+			if(isset($matches[1]) && strlen($matches[1]) > 0)
 			{
 				preg_match('@<NextMarker>(.*?)</NextMarker>@', $result, $matches);
 				$keys = array_merge($keys, $this->getBucketContents($bucket, $prefix, $delim, $matches[1]));
