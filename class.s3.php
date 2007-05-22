@@ -316,6 +316,7 @@
 		
 		function hasher($data)
 		{
+			// Algorithm adapted (stolen) from http://pear.php.net/package/Crypt_HMAC/)
 			$key = $this->_secret;
 			if(strlen($key) > 64)
 				$key = pack("H40", sha1($key));
