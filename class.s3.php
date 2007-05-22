@@ -1,13 +1,10 @@
 <?PHP
-	require_once 'Crypt/HMAC.php';
-
 	class S3
 	{
 		var $_key        = "";
 		var $_secret     = "";
 		var $_server     = "http://s3.amazonaws.com";
 		var $_pathToCurl = "curl";
-		var $_hasher     = null;
 		var $_date       = null;
 		var $_error      = null;
 		
@@ -18,7 +15,6 @@
 				$this->_key = $key;
 				$this->_secret = $secret;
 			}
-			$this->_hasher = new Crypt_HMAC($this->_secret, "sha1");
 		}
 		
 		function directorySize($bucket, $prefix = "")
@@ -313,9 +309,21 @@
 
 			// Build and sign the string
 			$str  = strtoupper($req['verb']) . "\n" . $req['md5']  . "\n" . $req['type'] . "\n" . $this->_date . $headers . "\n" . $req['resource'];
-			$sha1 = $this->_hasher->hash($str);
+			$sha1 = $this->hasher($str);
 			$sig  = $this->base64($sha1);
 			return $sig;
+		}
+		
+		function hasher($data)
+		{
+			$key = $this->_secret;
+			if(strlen($key) > 64)
+				$key = pack("H40", sha1($key));
+			if(strlen($key) < 64)
+				$key = str_pad($key, 64, chr(0));
+			$ipad = (substr($key, 0, 64) ^ str_repeat(chr(0x36), 64));
+			$opad = (substr($key, 0, 64) ^ str_repeat(chr(0x5C), 64));
+			return sha1($opad . pack("H40", sha1($ipad . $data)));
 		}
 
 		function base64($str)
@@ -365,4 +373,3 @@
 							"wdb" => "application/vnd.ms-works", "wks" => "application/vnd.ms-works", "wmf" => "application/x-msmetafile", "wps" => "application/vnd.ms-works", "wri" => "application/x-mswrite", "wrl" => "x-world/x-vrml", "wrz" => "x-world/x-vrml", "xaf" => "x-world/x-vrml", "xbm" => "image/x-xbitmap", "xla" => "application/vnd.ms-excel",
 							"xlc" => "application/vnd.ms-excel", "xlm" => "application/vnd.ms-excel", "xls" => "application/vnd.ms-excel", "xlt" => "application/vnd.ms-excel", "xlw" => "application/vnd.ms-excel", "xof" => "x-world/x-vrml", "xpm" => "image/x-xpixmap", "xwd" => "image/x-xwindowdump", "z" => "application/x-compress", "zip" => "application/zip");
 	}
-?>
