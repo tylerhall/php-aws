@@ -4,7 +4,7 @@
 		var $_key        = "";
 		var $_secret     = "";
 		var $_server     = "http://s3.amazonaws.com";
-		var $_pathToCurl = "curl";
+		var $_pathToCurl = "";
 		var $_date       = null;
 		var $_error      = null;
 		
@@ -15,6 +15,21 @@
 				$this->_key = $key;
 				$this->_secret = $secret;
 			}
+			
+			// If the path to curl isn't set, try and auto-detect it
+			if($this->_pathToCurl == "")
+			{
+				$path = trim(shell_exec("which curl"), "\n ");
+				if(is_executable($path))
+					$this->_pathToCurl = $path;
+				else
+				{
+					$this->_error = "Couldn't auto-detect path to curl";
+					return false;
+				}
+			}
+			
+			return true;
 		}
 		
 		function directorySize($bucket, $prefix = "")
@@ -50,14 +65,12 @@
 		
 		function putObject($bucket, $object, $filename, $public = null, $disposition = null)
 		{
-			global $mime_types;
-
 			$info     = pathinfo($filename);
 			$basename = $info['basename'];
 			$ext      = $info['extension'];
 
 			if(!isset($type))
-				$type = isset($mime_types[$ext]) ? $mime_types[$ext] : "application/octet-stream";
+				$type = isset($this->mime_types[$ext]) ? $this->mime_types[$ext] : "application/octet-stream";
 
 			$acl = isset($public) ? "public-read" : null;
 
@@ -365,7 +378,7 @@
 							"mdb" => "application/x-msaccess", "me" => "application/x-troff-me", "mht" => "message/rfc822", "mhtml" => "message/rfc822", "mid" => "audio/mid", "mny" => "application/x-msmoney", "mov" => "video/quicktime", "movie" => "video/x-sgi-movie", "mp2" => "video/mpeg", "mp3" => "audio/mpeg",
 							"mpa" => "video/mpeg", "mpe" => "video/mpeg", "mpeg" => "video/mpeg", "mpg" => "video/mpeg", "mpp" => "application/vnd.ms-project", "mpv2" => "video/mpeg", "ms" => "application/x-troff-ms", "mvb" => "application/x-msmediaview", "nws" => "message/rfc822", "oda" => "application/oda",
 							"p10" => "application/pkcs10", "p12" => "application/x-pkcs12", "p7b" => "application/x-pkcs7-certificates", "p7c" => "application/x-pkcs7-mime", "p7m" => "application/x-pkcs7-mime", "p7r" => "application/x-pkcs7-certreqresp", "p7s" => "application/x-pkcs7-signature", "pbm" => "image/x-portable-bitmap", "pdf" => "application/pdf", "pfx" => "application/x-pkcs12",
-							"pgm" => "image/x-portable-graymap", "pko" => "application/ynd.ms-pkipko", "pma" => "application/x-perfmon", "pmc" => "application/x-perfmon", "pml" => "application/x-perfmon", "pmr" => "application/x-perfmon", "pmw" => "application/x-perfmon", "pnm" => "image/x-portable-anymap", "pot" => "application/vnd.ms-powerpoint", "ppm" => "image/x-portable-pixmap",
+							"pgm" => "image/x-portable-graymap", "pko" => "application/ynd.ms-pkipko", "pma" => "application/x-perfmon", "pmc" => "application/x-perfmon", "pml" => "application/x-perfmon", "pmr" => "application/x-perfmon", "pmw" => "application/x-perfmon", "png" => "image/png", "pnm" => "image/x-portable-anymap", "pot" => "application/vnd.ms-powerpoint", "ppm" => "image/x-portable-pixmap",
 							"pps" => "application/vnd.ms-powerpoint", "ppt" => "application/vnd.ms-powerpoint", "prf" => "application/pics-rules", "ps" => "application/postscript", "pub" => "application/x-mspublisher", "qt" => "video/quicktime", "ra" => "audio/x-pn-realaudio", "ram" => "audio/x-pn-realaudio", "ras" => "image/x-cmu-raster", "rgb" => "image/x-rgb",
 							"rmi" => "audio/mid", "roff" => "application/x-troff", "rtf" => "application/rtf", "rtx" => "text/richtext", "scd" => "application/x-msschedule", "sct" => "text/scriptlet", "setpay" => "application/set-payment-initiation", "setreg" => "application/set-registration-initiation", "sh" => "application/x-sh", "shar" => "application/x-shar",
 							"sit" => "application/x-stuffit", "snd" => "audio/basic", "spc" => "application/x-pkcs7-certificates", "spl" => "application/futuresplash", "src" => "application/x-wais-source", "sst" => "application/vnd.ms-pkicertstore", "stl" => "application/vnd.ms-pkistl", "stm" => "text/html", "svg" => "image/svg+xml", "sv4cpio" => "application/x-sv4cpio",
