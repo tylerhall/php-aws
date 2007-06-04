@@ -1,6 +1,4 @@
 <?PHP
-	require_once 'Crypt/HMAC.php';
-
 	class SQS
 	{
 		var $key;
@@ -127,8 +125,7 @@
 			$params['Timestamp'] = gmdate('Y-m-d\TH:i:s\Z');
 
 			$string_to_sign = $params['Action'] . $params['Timestamp'];
-			$hasher =& new Crypt_HMAC($this->secret, "sha1");
-			$params['Signature'] = $this->hexTo64($hasher->hash($string_to_sign));
+			$params['Signature'] = $this->hexTo64($this->hasher($string_to_sign));
 
 			if(!isset($url)) $url = $this->amazon_url;
 
@@ -172,6 +169,19 @@
 				// Cannot open url. Either install curl-php or set allow_url_fopen = true in php.ini
 				return false;
 			}
+		}
+
+		function hasher($data)
+		{
+			// Algorithm adapted (stolen) from http://pear.php.net/package/Crypt_HMAC/)
+			$key = $this->_secret;
+			if(strlen($key) > 64)
+				$key = pack("H40", sha1($key));
+			if(strlen($key) < 64)
+				$key = str_pad($key, 64, chr(0));
+			$ipad = (substr($key, 0, 64) ^ str_repeat(chr(0x36), 64));
+			$opad = (substr($key, 0, 64) ^ str_repeat(chr(0x5C), 64));
+			return sha1($opad . pack("H40", sha1($ipad . $data)));
 		}
 
 		function hexTo64($str)

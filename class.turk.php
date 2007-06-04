@@ -5,11 +5,10 @@
 		var $_key        = "";
 		var $_secret     = "";
 		var $_server     = "http://ec2.amazonaws.com";
-		var $_hasher     = null;
 		var $_date       = null;
 		var $_error      = null;
 		
-		function __construct($key = null, $secret = null)
+		function Turk($key = null, $secret = null)
 		{
 			if($key && $secret)
 			{

@@ -8,7 +8,7 @@
 		var $_date       = null;
 		var $_error      = null;
 		
-		function __construct($key = null, $secret = null)
+		function S3($key = null, $secret = null)
 		{
 			if($key && $secret)
 			{

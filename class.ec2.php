@@ -1,24 +1,35 @@
 <?PHP
-	require_once 'Crypt/HMAC.php';
-
 	class EC2
 	{
 		var $_key        = "";
 		var $_secret     = "";
 		var $_server     = "http://ec2.amazonaws.com";
-		var $_pathToCurl = "curl";
-		var $_hasher     = null;
+		var $_pathToCurl = "";
 		var $_date       = null;
 		var $_error      = null;
 		
-		function __construct($key = null, $secret = null)
+		function EC2($key = null, $secret = null)
 		{
 			if($key && $secret)
 			{
 				$this->_key = $key;
 				$this->_secret = $secret;
 			}
-			$this->_hasher = new Crypt_HMAC($this->_secret, "sha1");
+
+			// If the path to curl isn't set, try and auto-detect it
+			if($this->_pathToCurl == "")
+			{
+				$path = trim(shell_exec("which curl"), "\n ");
+				if(is_executable($path))
+					$this->_pathToCurl = $path;
+				else
+				{
+					$this->_error = "Couldn't auto-detect path to curl";
+					return false;
+				}
+			}
+			
+			return true;
 		}
 
 		function getImages($ownerId = null)
@@ -114,7 +125,7 @@
 			$toSign = "";
 			foreach($params as $key => $val)
 				$toSign .= $key . $val;
-			$sha1 = $this->_hasher->hash($toSign);
+			$sha1 = $this->hasher($toSign);
 			$sig  = $this->base64($sha1);
 			$params['Signature'] = $sig;
 
@@ -127,6 +138,19 @@
 
 			return `$curl`;
 		}		
+
+		function hasher($data)
+		{
+			// Algorithm adapted (stolen) from http://pear.php.net/package/Crypt_HMAC/)
+			$key = $this->_secret;
+			if(strlen($key) > 64)
+				$key = pack("H40", sha1($key));
+			if(strlen($key) < 64)
+				$key = str_pad($key, 64, chr(0));
+			$ipad = (substr($key, 0, 64) ^ str_repeat(chr(0x36), 64));
+			$opad = (substr($key, 0, 64) ^ str_repeat(chr(0x5C), 64));
+			return sha1($opad . pack("H40", sha1($ipad . $data)));
+		}
 
 		function base64($str)
 		{
