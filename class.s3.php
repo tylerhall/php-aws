@@ -69,8 +69,7 @@
 			$basename = $info['basename'];
 			$ext      = $info['extension'];
 
-			if(!isset($type))
-				$type = isset($this->mime_types[$ext]) ? $this->mime_types[$ext] : "application/octet-stream";
+			$type = isset($this->mime_types[$ext]) ? $this->mime_types[$ext] : "application/octet-stream";
 
 			$acl = isset($public) ? "public-read" : null;
 
