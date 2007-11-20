@@ -1,17 +1,37 @@
 <?PHP
+
 	class SQS
 	{
-		var $key;
-		var $secret;
-		var $amazon_url = "http://queue.amazonaws.com/";
-		var $version = "2006-04-01";
+		
+		var $_key        = "";
+		var $_secret     = "";
+		var $_server     = "http://queue.amazonaws.com/";
+		var $_pathToCurl = "";
+		var $_date       = null;
+		var $_error      = null;
+				
 		var $queue_url;
 
 		function SQS($key, $secret, $queue_url = null)
 		{
-			$this->key    = $key;
-			$this->secret = $secret;
+			$this->_key    = $key;
+			$this->_secret = $secret;
 			$this->queue_url = $queue_url;
+			
+			// If the path to curl isn't set, try and auto-detect it
+			if($this->_pathToCurl == "")
+			{
+				$path = trim(shell_exec("which curl"), "\n ");
+				if(is_executable($path))
+					$this->_pathToCurl = $path;
+				else
+				{
+					$this->_error = "Couldn't auto-detect path to curl";
+					return false;
+				}
+			}
+			
+			
 		}
 
 		function createQueue($queue_name, $default_timeout = 30)
@@ -29,7 +49,6 @@
 			$params = ($queue_name_prefix == "") ? array() : array("QueueNamePrefix" => $queue_name_prefix);
 			$xml = $this->go("ListQueues", $params);
 			if($xml === false) return false;
-
 			$out = array();
 			foreach($xml->QueueUrl as $url)
 				$out[] = strval($url);
@@ -66,12 +85,13 @@
 			if(isset($timeout)) $params['VisibilityTimeout'] = intval($timeout);
 
 			$xml = $this->go("ReceiveMessage", $params, $queue_url);
+
 			if($xml === false) return $false;
 
 			$out = array();
 			foreach($xml->Message as $m)
 				$out[] = array("MessageId" => strval($m->MessageId), "MessageBody" => urldecode(strval($m->MessageBody)));
-			return (count($out) == 1) ? $out[0] : $out;
+			return $out;
 		}
 
 		function peekMessage($message_id, $queue_url = null)
@@ -94,23 +114,38 @@
 			$xml = $this->go("DeleteMessage", $params, $queue_url);
 			return ($xml === false) ? false : true;
 		}
+		
+		function clearQueue($limit = 100, $queue_url)
+		{
+			$m = $this->receiveMessage($limit, null, $queue_url);
+			foreach($m as $n)
+				$this->deleteMessage($n['MessageId'], $queue_url);
+		}
 
 		function setTimeout($timeout, $queue_url = null)
 		{
+			$timeout = intval($timeout);
 			if(!isset($queue_url)) $queue_url = $this->queue_url;
 			if(!is_int($timeout)) $timeout = 30;
-			$params = array("VisibilityTimeout" => $timeout);
-			$xml = $this->go("SetVisibilityTimeout", $params, $queue_url);
+			$params = array("Attribute" => "VisibilityTimeout", "Value" => $timeout);
+			$xml = $this->go("SetQueueAttributes", $params, $queue_url);
 			return ($xml === false) ? false : true;
 		}
 
 		function getTimeout($queue_url = null)
 		{
 			if(!isset($queue_url)) $queue_url = $this->queue_url;
-			$xml = $this->go("GetVisibilityTimeout", $params, $queue_url);
-			return ($xml === false) ? false : strval($xml->VisibilityTimeout);
+			$params = array("Attribute" => "VisibilityTimeout");
+			$xml = $this->go("GetQueueAttributes", $params, $queue_url);
+			return ($xml === false) ? false : strval($xml->AttributedValue->Value);
 		}
-
+		function getSize($queue_url = null)
+		{
+			if(!isset($queue_url)) $queue_url = $this->queue_url;
+			$params = array("Attribute" => "ApproximateNumberOfMessages");			
+			$xml = $this->go("GetQueueAttributes", $params, $queue_url);
+			return ($xml === false) ? false : strval($xml->AttributedValue->Value);
+		}
 		function setQueue($queue_url)
 		{
 			$this->queue_url = $queue_url;
@@ -118,59 +153,39 @@
 
 		function go($action, $params, $url = null)
 		{
-			if(!is_array($params)) $params = array();
 			$params['Action'] = $action;
-			$params['Version'] = $this->version;
-			$params['AWSAccessKeyId'] = $this->key;
-			$params['Timestamp'] = gmdate('Y-m-d\TH:i:s\Z');
+			if(!isset($url)) $url = $this->_server;
+			
+			$params['AWSAccessKeyId'] = $this->_key;
+			$params['SignatureVersion'] = 1;
+			$params['Timestamp'] = gmdate("Y-m-d\TH:i:s\Z");
+			$params['Version'] = "2007-05-01";
+			uksort($params, "strnatcasecmp");
 
-			$string_to_sign = $params['Action'] . $params['Timestamp'];
-			$params['Signature'] = $this->hexTo64($this->hasher($string_to_sign));
-
-			if(!isset($url)) $url = $this->amazon_url;
-
-			$url .= "?";
+			$toSign = "";
 			foreach($params as $key => $val)
-				$url .= "&$key=" . urlencode($val);
+				$toSign .= $key . $val;
+			$sha1 = $this->hasher($toSign);
+			$sig  = $this->base64($sha1);
+			$params['Signature'] = $sig;
 
-			$xmlstr = $this->geturl($url);
+			$curl = "{$this->_pathToCurl} -s \"{$url}?";
+			reset($params);
+			foreach($params as $key => $val)
+				$curl .= "$key=" . urlencode($val) . "&";
+			$curl .= '"';
+
+			$xmlstr = `$curl`;
+
 			$xml = new SimpleXMLElement($xmlstr);
 			if(isset($xml->Errors))
 				return false;
 			else
 				return $xml;
-		}
-
-		function geturl($url, $username = "", $password = "")
-		{
-			if(function_exists("curl_init"))
-			{
-				$ch = curl_init();
-				if(!empty($username) && !empty($password)) curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Basic ' .  base64_encode("$username:$password")));
-				curl_setopt($ch, CURLOPT_URL, $url);
-				curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-				curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-				$html = curl_exec($ch);
-				curl_close($ch);
-				return $html;
-			}
-			elseif(ini_get("allow_url_fopen") == true)
-			{
-				if(!empty($username) && !empty($password))
-				{
-					$url = str_replace("http://", "http://$username:$password@", $url);
-					$url = str_replace("https://", "https://$username:$password@", $url);
-				}
-				$html = file_get_contents($url);
-				return $html;
-			}
-			else
-			{
-				// Cannot open url. Either install curl-php or set allow_url_fopen = true in php.ini
-				return false;
-			}
-		}
-
+			
+			
+		}		
+		
 		function hasher($data)
 		{
 			// Algorithm adapted (stolen) from http://pear.php.net/package/Crypt_HMAC/)
@@ -184,12 +199,13 @@
 			return sha1($opad . pack("H40", sha1($ipad . $data)));
 		}
 
-		function hexTo64($str)
+		function base64($str)
 		{
-			$raw = "";
+			$ret = "";
 			for($i = 0; $i < strlen($str); $i += 2)
-				$raw .= chr(hexdec(substr($str, $i, 2)));
-			return base64_encode($raw);
+				$ret .= chr(hexdec(substr($str, $i, 2)));
+			return base64_encode($ret);
 		}
+
 	}
 ?>
