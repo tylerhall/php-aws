@@ -71,7 +71,7 @@
 
 			$type = isset($this->mime_types[$ext]) ? $this->mime_types[$ext] : "application/octet-stream";
 
-			$acl = isset($public) ? "public-read" : null;
+			$acl = ($public === true) ? "public-read" : null;
 
 			if(substr($object, 0, 1) != "/" ) $object = "/$object";
 			$req = array(	"verb" => "PUT",
