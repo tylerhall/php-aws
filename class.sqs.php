@@ -36,7 +36,7 @@
 
 		function createQueue($queue_name, $default_timeout = 30)
 		{
-			if(!is_int($default_timeout)) $default_timeout = 30;
+			if ($default_timeout < 30) { $default_timeout = 30; }
 			$params = array("QueueName" => $queue_name, "DefaultVisibilityTimeout" => $default_timeout);
 			$xml = $this->go("CreateQueue", $params);
 			if($xml === false) return false;
@@ -50,7 +50,7 @@
 			$xml = $this->go("ListQueues", $params);
 			if($xml === false) return false;
 			$out = array();
-			foreach($xml->QueueUrl as $url)
+			foreach($xml->ListQueuesResult->QueueUrl as $url)
 				$out[] = strval($url);
 			return $out;
 		}
@@ -81,7 +81,7 @@
 			if($number > 256) $number = 256;
 
 			$params = array();
-			$params['NumberOfMessages'] = $number;
+			$params['MaxNumberOfMessages'] = $number;
 			if(isset($timeout)) $params['VisibilityTimeout'] = intval($timeout);
 
 			$xml = $this->go("ReceiveMessage", $params, $queue_url);
@@ -92,19 +92,6 @@
 			foreach($xml->Message as $m)
 				$out[] = array("MessageId" => strval($m->MessageId), "MessageBody" => urldecode(strval($m->MessageBody)));
 			return $out;
-		}
-
-		function peekMessage($message_id, $queue_url = null)
-		{
-			if(!isset($queue_url)) $queue_url = $this->queue_url;
-			$params = array("MessageId" => $message_id);
-			$xml = $this->go("PeekMessage", $params, $queue_url);
-			if($xml === false) return false;
-
-			$out = array();
-			foreach($xml->Message as $m)
-				$out[] = array("MessageId" => strval($m->MessageId), "MessageBody" => urldecode(strval($m->MessageBody)));
-			return (count($out) == 1) ? $out[0] : $out;
 		}
 
 		function deleteMessage($message_id, $queue_url = null)
@@ -127,7 +114,7 @@
 			$timeout = intval($timeout);
 			if(!isset($queue_url)) $queue_url = $this->queue_url;
 			if(!is_int($timeout)) $timeout = 30;
-			$params = array("Attribute" => "VisibilityTimeout", "Value" => $timeout);
+			$params = array("Attribute.Name" => "VisibilityTimeout", "Attribute.Value" => $timeout);
 			$xml = $this->go("SetQueueAttributes", $params, $queue_url);
 			return ($xml === false) ? false : true;
 		}
@@ -135,16 +122,16 @@
 		function getTimeout($queue_url = null)
 		{
 			if(!isset($queue_url)) $queue_url = $this->queue_url;
-			$params = array("Attribute" => "VisibilityTimeout");
+			$params = array("AttributeName" => "VisibilityTimeout");
 			$xml = $this->go("GetQueueAttributes", $params, $queue_url);
-			return ($xml === false) ? false : strval($xml->AttributedValue->Value);
+			return ($xml === false) ? false : strval($xml->GetQueueAttributesResult->Attribute->Value);
 		}
 		function getSize($queue_url = null)
 		{
 			if(!isset($queue_url)) $queue_url = $this->queue_url;
-			$params = array("Attribute" => "ApproximateNumberOfMessages");			
+			$params = array("AttributeName" => "ApproximateNumberOfMessages");			
 			$xml = $this->go("GetQueueAttributes", $params, $queue_url);
-			return ($xml === false) ? false : strval($xml->AttributedValue->Value);
+			return ($xml === false) ? false : strval($xml->GetQueueAttributesResult->Attribute->Value);
 		}
 		function setQueue($queue_url)
 		{
@@ -154,12 +141,13 @@
 		function go($action, $params, $url = null)
 		{
 			$params['Action'] = $action;
-			if(!isset($url)) $url = $this->_server;
+			
+			if(!$url) $url = $this->_server;
 			
 			$params['AWSAccessKeyId'] = $this->_key;
 			$params['SignatureVersion'] = 1;
 			$params['Timestamp'] = gmdate("Y-m-d\TH:i:s\Z");
-			$params['Version'] = "2007-05-01";
+			$params['Version'] = "2008-01-01";
 			uksort($params, "strnatcasecmp");
 
 			$toSign = "";
@@ -170,7 +158,7 @@
 			$params['Signature'] = $sig;
 
 			$curl = "{$this->_pathToCurl} -s \"{$url}?";
-			reset($params);
+
 			foreach($params as $key => $val)
 				$curl .= "$key=" . urlencode($val) . "&";
 			$curl .= '"';
@@ -178,6 +166,7 @@
 			$xmlstr = `$curl`;
 
 			$xml = new SimpleXMLElement($xmlstr);
+			
 			if(isset($xml->Errors))
 				return false;
 			else
