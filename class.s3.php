@@ -3,18 +3,23 @@
 	{
 		var $_key        = "";
 		var $_secret     = "";
+		var $_vhost	 = FALSE;
 		var $_server     = "http://s3.amazonaws.com";
+		var $_tmpserver  = "";				// holds actual vhost, for later expansion
 		var $_pathToCurl = "";
 		var $_date       = null;
 		var $_error      = null;
+		var $_debug	 = FALSE;			// turn debugging on/off
 		
-		function S3($key = null, $secret = null)
+		function S3($key = null, $secret = null, $vhost = FALSE)
 		{
 			if($key && $secret)
 			{
 				$this->_key = $key;
 				$this->_secret = $secret;
 			}
+			
+			$this->_vhost = $vhost;
 			
 			// If the path to curl isn't set, try and auto-detect it
 			if($this->_pathToCurl == "")
@@ -30,6 +35,15 @@
 			}
 			
 			return true;
+		}
+		
+		function setDebugMode($debug = FALSE)
+		{
+			if ($debug)
+				$this->_debug = TRUE;
+			else
+				$this->_debug = FALSE;
+			return TRUE;
 		}
 		
 		function directorySize($bucket, $prefix = "")
@@ -239,6 +253,56 @@
 			return $keys;
 		}
 		
+		// Get Auth Link
+		function getAuthLink($bucket, $object, $timeout = 120)
+		{
+			if($object[0] <> "/") $object = "/$object";
+
+			if($this->_debug) $this->outputDebug("Auth: Bucket", $bucket);
+			if($this->_debug) $this->outputDebug("Auth: Object", $object);
+			$req = array(	"verb"		=> "GET",
+					"md5"		=> null,
+					"type"		=> null,
+					"expires"	=> time() + $timeout,
+					"resource"	=> "/$bucket$object",
+				    );
+				    
+			$sig = $this->signature($req);
+			// If it's not a real vhost, add the amazonaws url part
+			if (!$this->_vhost)
+				$bucket = "$bucket.s3.amazonaws.com";
+				
+			if (strpos($object, "?torrent") !== FALSE)
+				$authlink = "http://$bucket$object&AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . $sig;
+			else
+				$authlink = "http://$bucket$object?AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . $sig;
+			if ($this->_debug) $this->outputDebug("AuthLink:",$authlink);
+			return $authlink;
+			
+		}
+				
+		// Return Location of specified item
+		function getLocation($bucket, $prefix = null, $delim = null, $marker = null)
+		{
+			if($prefix[0] <> "/") $prefix = "/$prefix";
+			$req = array(	"verb" => "GET",
+						"md5" => null,
+						"type" => null,
+						"headers" => null,
+						"resource" => "/$bucket" . $prefix,
+						"location" => TRUE,
+					);
+			$params = array("location" => "");
+			$result = $this->sendRequest($req, $params);		
+			if ($this->_debug) $this->outputDebug("Location Req-Result", htmlentities($result));
+			preg_match('@<Location.*>(.*)</LocationConstraint>@', $result, $matches);
+			if ($this->_debug) $this->outputDebug("Location: Matched Strings", $matches);
+			if(!isset($matches[1]))
+				$matches[1] = "US";
+				
+			return $matches[1];
+		}
+		
 		function sendRequest($req, $params = null)
 		{
 			if(isset($req['resource']))
@@ -247,6 +311,34 @@
 				$req['resource'] = str_replace("%2F", "/", $req['resource']);
 			}
 
+			if ($this->_debug) $this->outputDebug("$req in sendRequest", $req);
+			if ($req['resource'] <> "/") {		// not in 'root dir'
+				$sru_req = explode("/", $req['resource']);
+				if ($this->_debug) $this->outputDebug("SendRequest: Split Resource", $sru_req);
+				// check whether the user wants to use an alternate hostname like downloads.whatever.tld
+				// TODO TODO TODO
+				// check whether this is actually needed
+				// TODO TODO TODO
+				if ($this->_vhost) {
+				 	$this->_tmpserver = "http://" . $sru_req[1];
+				} else {
+					$this->_tmpserver = "http://" . $sru_req[1] . ".s3.amazonaws.com";
+				}
+				$sru_tmp = strpos($req['resource'], "/", 1);
+				if ($sru_tmp === FALSE) {
+					$req['resource'] = "/";
+					// Virtual Hosts need a Host: header
+					$req['headers']['Host'] = $sru_req[1];
+				} else {
+					$req['resource'] = substr($req['resource'], $sru_tmp);
+					// Virtual Hosts need a Host: header
+					$req['headers']['Host'] = $sru_req[1] . ".s3.amazonaws.com";
+				}
+			} else {
+				$this->_tmpserver = $this->_server;
+			}
+			
+			if ($this->_debug) $this->outputDebug("SendRequest: Request struct", $req);
 			$sig = $this->signature($req);
 			
 			$args = array();
@@ -266,29 +358,36 @@
 			if(strtolower($req['verb']) != "head")
 				$args[] = array("-X", $req['verb']);
 
-			$curl = $this->_pathToCurl . " -s ";
+			// always make requests follow Temporary Redirects
+			$curl = $this->_pathToCurl . " -s -L ";
+
 			foreach($args as $arg)
 			{
 				list($key, $val) = $arg;
 				$curl .= "$key \"$val\" ";
 			}
 			
-			$curl .= '"' . $this->_server . $req['resource'];
+			$curl .= '"' . $this->_tmpserver . $req['resource'];
 			
 			if(is_array($params))
 			{
 				$curl .= "?";
-				foreach($params as $key => $val)
+				foreach($params as $key => $val) {
 					$curl .= "$key=" . urlencode($val) . "&";
+					if($key == "location")
+						$curl = substr($curl, 0, -1);
+				}
 			}
 			
+			// remove trailing "&"
+			if (substr($curl, -1) == "&") $curl = substr($curl, 0, -1);
 			$curl .= '"';
 			
 			if(strtolower($req['verb']) == "head")
 				$curl .= " -I ";
 
 			if(isset($req['download'])) $curl .= ' -o "' . $req['download'] . '"';
-
+			if ($this->_debug) $this->outputDebug("SendRequest: Curl Call", $curl);
 			return `$curl`;
 		}
 		
@@ -311,16 +410,39 @@
 				}
 			}
 			ksort($arrHeaders);
+
 			$headers = implode("\n", $arrHeaders);
 			if(!empty($headers)) $headers = "\n$headers";
 			
+			// Construct "bucket" name for virtual Host requests
+			if (isset($req['headers']['Host'])) {
+				// for virtual hosts it's "/" . Vhost . RequestPath
+				if(strpos($req['headers']['Host'], "s3.amazonaws.com") === FALSE) {
+					// private vhost like downloads.mydomain.tld
+					$my_resource = "/" . $req['headers']['Host'] . $req['resource'];
+				} else {
+					// vhost.s3.amazonaws.com -> strip .s3.amazonaws.com for Signature calculation
+					$my_resource = "/" . str_replace(".s3.amazonaws.com", "", $req['headers']['Host']) . $req['resource'];
+				}
+			} else {
+				// else it's just a request path
+				$my_resource = $req['resource'];
+			}
 			if(isset($req['date']))
 				$this->_date = gmdate("D, d M Y H:i:s T", strtotime($req['date']));
 			else
-				$this->_date = gmdate("D, d M Y H:i:s T");
-
+				if(isset($req['expires']))
+					$this->_date = $req['expires'];
+				else
+					$this->_date = gmdate("D, d M Y H:i:s T");
+				
+			// Location Hack
+			if(isset($req["location"]))
+				$my_resource .= "?location";
+				
 			// Build and sign the string
-			$str  = strtoupper($req['verb']) . "\n" . $req['md5']  . "\n" . $req['type'] . "\n" . $this->_date . $headers . "\n" . $req['resource'];
+			$str  = strtoupper($req['verb']) . "\n" . $req['md5']  . "\n" . $req['type'] . "\n" . $this->_date . $headers . "\n" . $my_resource;
+			if ($this->_debug) $this->outputDebug("Signature: Calcbase", $str);
 			$sha1 = $this->hasher($str);
 			$sig  = $this->base64($sha1);
 			return $sig;
@@ -366,6 +488,14 @@
 			return $keys;
 		}
 
+		function outputDebug($title = "", $var)
+		{
+			echo "Where: $title<br /><br />\n";
+			echo "<pre>";
+			var_dump($var);
+			echo "</pre>";
+		}
+		
 		var $mime_types = array("323" => "text/h323", "acx" => "application/internet-property-stream", "ai" => "application/postscript", "aif" => "audio/x-aiff", "aifc" => "audio/x-aiff", "aiff" => "audio/x-aiff",
 							"asf" => "video/x-ms-asf", "asr" => "video/x-ms-asf", "asx" => "video/x-ms-asf", "au" => "audio/basic", "avi" => "video/quicktime", "axs" => "application/olescript", "bas" => "text/plain", "bcpio" => "application/x-bcpio", "bin" => "application/octet-stream", "bmp" => "image/bmp",
 							"c" => "text/plain", "cat" => "application/vnd.ms-pkiseccat", "cdf" => "application/x-cdf", "cer" => "application/x-x509-ca-cert", "class" => "application/octet-stream", "clp" => "application/x-msclip", "cmx" => "image/x-cmx", "cod" => "image/cis-cod", "cpio" => "application/x-cpio", "crd" => "application/x-mscardfile",
