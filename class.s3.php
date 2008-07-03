@@ -206,7 +206,7 @@
 							"resource" => "/$bucket",
 						);
 
-			if($prefix[0] == "/") $prefix[0] = "";
+			if(strlen($prefix) > 0 && $prefix[0] == "/") $prefix[0] = "";
 			$params = array("prefix" => trim($prefix), "marker" => $marker, "delimiter" => $delim);
 			$result = $this->sendRequest($req, $params);		
 			preg_match_all("@<Contents>(.*?)</Contents>@", $result, $matches);
