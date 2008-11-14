@@ -279,9 +279,9 @@
 				$bucket = "$bucket.s3.amazonaws.com";
 				
 			if (strpos($object, "?torrent") !== FALSE)
-				$authlink = "http://$bucket$object&AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . $sig;
+				$authlink = "http://$bucket$object&AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . urlencode($sig);
 			else
-				$authlink = "http://$bucket$object?AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . $sig;
+				$authlink = "http://$bucket$object?AWSAccessKeyId=" . $this->_key . "&Expires=" . $req['expires'] . "&Signature=" . urlencode($sig);
 			if ($this->_debug) $this->outputDebug("AuthLink:",$authlink);
 			return $authlink;
 			
