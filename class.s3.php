@@ -98,10 +98,16 @@
 							"disposition" => $disposition,
 							"acl" => $acl,
 						);
-			$this->sendRequest($req);
+			$result = $this->sendRequest($req);
+
+			preg_match('/ETag:.*?([a-fA-F0-9]+)/ms', $result, $etag);
+			if(isset($etag[1]))
+			{
+				$etag = $etag[1];
+				return ($etag == md5_file($filename));
+			}
 			
-			$info = $this->getObjectInfo($bucket, $object);
-			return ($info['hash'] == md5_file($filename));
+			return false;
 		}
 		
 		function getObject($bucket, $object)
@@ -303,7 +309,7 @@
 			return $matches[1];
 		}
 		
-		function sendRequest($req, $params = null)
+		function sendRequest($req, $params = null, $return_header = false)
 		{
 			if(isset($req['resource']))
 			{
@@ -385,6 +391,9 @@
 			
 			if(strtolower($req['verb']) == "head")
 				$curl .= " -I ";
+
+			if($return_header === true)
+				$curl .= ' --head ';
 
 			if(isset($req['download'])) $curl .= ' -o "' . $req['download'] . '"';
 			if ($this->_debug) $this->outputDebug("SendRequest: Curl Call", $curl);
