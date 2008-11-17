@@ -26,7 +26,7 @@
         public function listBuckets()
         {
             $request = array('verb' => 'GET', 'resource' => '/');
-            $result = $this->sendRequest($request, $this->host);
+            $result = $this->sendRequest($request);
             $xml = simplexml_load_string($result);
 
             if($xml === false || !isset($xml->Buckets->Bucket))
@@ -41,21 +41,21 @@
         public function createBucket($name)
         {
             $request = array('verb' => 'PUT', 'resource' => "/$name/");
-            $result = $this->sendRequest($request, $this->host);
+            $result = $this->sendRequest($request);
             return $this->curlInfo['http_code'] == '200';
         }
 
         public function deleteBucket($name)
         {
             $request = array('verb' => 'DELETE', 'resource' => "/$name/");
-            $result = $this->sendRequest($request, $this->host);
+            $result = $this->sendRequest($request);
             return $this->curlInfo['http_code'] == '204';
         }
 
         public function getBucketLocation($name)
         {
             $request = array('verb' => 'GET', 'resource' => "/$name/?location");
-            $result = $this->sendRequest($request, $this->host);
+            $result = $this->sendRequest($request);
             $xml = simplexml_load_string($result);
 
             if($xml === false)
@@ -80,7 +80,7 @@
                     $q = '?' . $q;
 
                 $request = array('verb' => 'GET', 'resource' => "/$name/$q");
-                $result = $this->sendRequest($request, $this->host);
+                $result = $this->sendRequest($request);
                 $xml = simplexml_load_string($result);
 
                 if($xml === false)
@@ -131,7 +131,7 @@
             }
             $request['content-type'] = $headers['Content-Type'];
 
-            $result = $this->sendRequest($request, $this->host, $headers, $curl_opts);
+            $result = $this->sendRequest($request, $headers, $curl_opts);
             fclose($fh);
             return $this->curlInfo['http_code'] == '200';
         }
@@ -139,7 +139,7 @@
         public function deleteObject($bucket_name, $s3_path)
         {
             $request = array('verb' => 'DELETE', 'resource' => "/$bucket_name/$s3_path");
-            $result = $this->sendRequest($request, $this->host);
+            $result = $this->sendRequest($request);
             return $this->curlInfo['http_code'] == '204';
         }
 
@@ -147,7 +147,7 @@
         {
             $request = array('verb' => 'PUT', 'resource' => "/$dest_bucket_name/$dest_s3_path");
             $headers = array('x-amz-copy-source' => "/$bucket_name/$s3_path");
-            $result = $this->sendRequest($request, $this->host, $headers);
+            $result = $this->sendRequest($request, $headers);
 
             if($this->curlInfo['http_code'] != '200')
                 return false;
@@ -163,7 +163,7 @@
         {
             $request = array('verb' => 'HEAD', 'resource' => "/$bucket_name/$s3_path");
             $curl_opts = array('CURLOPT_HEADER' => true, 'CURLOPT_NOBODY' => true);
-            $result = $this->sendRequest($request, $this->host, null, $curl_opts);
+            $result = $this->sendRequest($request, null, $curl_opts);
             $xml = @simplexml_load_string($result);
 
             if($xml !== false)
@@ -190,13 +190,34 @@
             if(is_null($headers))
                 $headers = array();
 
-            $result = $this->sendRequest($request, $this->host, $headers, $curl_opts);
+            $result = $this->sendRequest($request, $headers, $curl_opts);
             fclose($fh);
             return $this->curlInfo['http_code'] == '200';
 
         }
 
-        private function sendRequest($request, $host, $headers = null, $curl_opts = null)
+		public function getAuthenticatedURLRelative($bucket_name, $s3_path, $seconds_till_expires = 3600)
+		{
+			return $this->getAuthenticatedURL($bucket_name, $s3_path, gmmktime() + $seconds_till_expires);
+		}
+
+		public function getAuthenticatedURL($bucket_name, $s3_path, $expires_on)
+		{
+			// $expires_on must be a GMT Unix timestamp
+
+			$request = array('verb' => 'GET', 'resource' => "/$bucket_name/$s3_path", 'date' => $expires_on);
+			$signature = urlencode($this->signature($request));
+			
+			$url = sprintf("http://%s.s3.amazonaws.com/%s?AWSAccessKeyId=%s&Expires=%s&Signature=%s",
+							$bucket_name,
+							$s3_path,
+							$this->key,
+							$expires_on,
+							$signature);
+			return $url;
+		}
+
+        private function sendRequest($request, $headers = null, $curl_opts = null)
         {
             if(is_null($headers))
                 $headers = array();
@@ -206,7 +227,7 @@
             foreach($headers as $k => $v)
                 $headers[$k] = "$k: $v";
 
-            $uri = 'http://' . $host . $request['resource'];
+            $uri = 'http://' . $this->host . $request['resource'];
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $uri);
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $request['verb']);
@@ -226,8 +247,11 @@
             return $result;
         }
 
-        private function signature($request, $headers)
+        private function signature($request, $headers = null)
         {
+			if(is_null($headers))
+				$headers = array();
+
             $CanonicalizedAmzHeadersArr = array();
             $CanonicalizedAmzHeadersStr = '';
             foreach($headers as $k => $v)
@@ -249,7 +273,7 @@
             $str  = $request['verb'] . "\n";
             $str .= isset($request['content-md5']) ? $request['content-md5'] . "\n" : "\n";
             $str .= isset($request['content-type']) ? $request['content-type'] . "\n" : "\n";
-            $str .= $this->date . "\n";
+            $str .= isset($request['date']) ? $request['date']  . "\n" : $this->date . "\n";
             $str .= $CanonicalizedAmzHeadersStr . preg_replace('/\?.*/', '', $request['resource']);
 
             $sha1 = $this->hasher($str);
