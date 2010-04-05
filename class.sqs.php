@@ -68,7 +68,7 @@
 
             $xml = $this->go("ReceiveMessage", $params, $queue_url);
 
-            if($xml === false) return $false;
+            if($xml === false) return false;
 
             $out = array();
             foreach($xml->ReceiveMessageResult->Message as $m)

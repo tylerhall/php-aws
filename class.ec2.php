@@ -129,14 +129,19 @@
 			$sig  = $this->base64($sha1);
 			$params['Signature'] = $sig;
 
-			$curl = "{$this->_pathToCurl} -s \"{$this->_server}/?";
+			$uri = $this->_server . '/?';
 			
-			reset($params);
 			foreach($params as $key => $val)
-				$curl .= "$key=" . urlencode($val) . "&";
-			$curl .= '"';
+				$uri .= "$key=" . urlencode($val) . "&";
 
-			return `$curl`;
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $uri);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+            $result = curl_exec($ch);
+            curl_close($ch);
+			
+            return $result;
 		}		
 
 		function hasher($data)
