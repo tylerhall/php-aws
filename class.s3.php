@@ -126,7 +126,7 @@
 
             if(!isset($headers['Content-Type']))
             {
-                $ext = pathinfo($fs_path, PATHINFO_EXTENSION);
+                $ext = strtolower(pathinfo($fs_path, PATHINFO_EXTENSION));
                 $headers['Content-Type'] = isset($this->mimeTypes[$ext]) ? $this->mimeTypes[$ext] : 'application/octet-stream';
             }
             $request['content-type'] = $headers['Content-Type'];
